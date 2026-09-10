@@ -82,7 +82,7 @@ export function Setup(props: PageProps) {
   });
 
   return (
-    <main className="bg-subtle flex items-center print:h-full md:h-screen">
+    <main className="bg-subtle flex flex-col items-center print:h-full md:h-screen">
       <WizardForm
         defaultStep={defaultStep}
         steps={steps}
@@ -90,6 +90,11 @@ export function Setup(props: PageProps) {
         finishLabel={t("finish")}
         prevLabel={t("prev_step")}
         stepLabel={(currentStep, maxSteps) => t("current_step_of_total", { currentStep, maxSteps })}
+      />
+      <img
+        src="https://media.base44.com/images/public/6aa28e9a789654d3cfdf2f29/577e45647_image2.png"
+        alt=""
+        className="mb-6 h-40 w-auto rounded-lg object-contain"
       />
     </main>
   );
