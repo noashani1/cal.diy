@@ -242,3 +242,16 @@ For detailed information, see the `agents/` directory:
 - **[agents/rules/](agents/rules/)** - Modular engineering rules
 - **[agents/commands.md](agents/commands.md)** - Complete command reference
 - **[agents/knowledge-base.md](agents/knowledge-base.md)** - Domain knowledge and business rules
+
+## Base44 Dev Environment
+
+The app runs in Docker Compose via `docker-compose.base44.yml` (not the repo's own `docker-compose.yml`, which builds a frozen production image).
+
+- **Stack**: `database` (postgres:16-alpine) + one-shot `setup` service + `web` (node:20, bind-mounted source, `yarn dev` with Turbopack live reload).
+- **Setup service** runs once on `up`: `yarn install` → `yarn prisma generate` → `yarn workspace @calcom/prisma db-deploy` (migrations) → `yarn workspace @calcom/web run copy-app-store-static`. It exits 0; the `web` service waits for it via `service_completed_successfully`.
+- **Start**: `docker compose -f docker-compose.base44.yml up -d`. First boot takes several minutes (yarn install + migrations); subsequent restarts are fast because `node_modules` persists on the bind mount.
+- **Verify**: `curl -sL -o /dev/null -w "%{http_code}" http://localhost:3000/` → 200 (lands on `/auth/setup` first-run wizard). Preview shows the setup wizard.
+- **Required boot secrets** (delivered via `/run/base44/app.env`, generated as dev placeholders): `NEXTAUTH_SECRET` (any random string), `CALENDSO_ENCRYPTION_KEY` (must be exactly 32 bytes/latin1 — `openssl rand -base64 24`; the placeholder unblocks boot but AES256 will fail at runtime until a real 32-byte key is set).
+- **Env**: `.env.base44-defaults` holds non-secret optional defaults (listed first); `/run/base44/app.env` holds real secrets (listed last, always wins). `ALLOWED_HOSTNAMES` and `RESERVED_SUBDOMAINS` must be JSON-quoted (e.g. `'"localhost:3000"'`) — they're `JSON.parse`'d in `packages/lib/constants.ts`.
+- **allowedDevOrigins**: `apps/web/next.config.ts` adds `3000-${BASE44_PUBLIC_HOST_SUFFIX}` to `allowedDevOrigins` so the preview origin can reach the Next.js dev server / HMR. `BASE44_PUBLIC_HOST_SUFFIX` is passed into the `web` service env.
+- The repo's own `docker-compose.yml` and `Dockerfile` are for production builds and are not used by Base44.

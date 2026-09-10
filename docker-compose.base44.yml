@@ -1,0 +1,74 @@
+# Base44 development compose for Cal.diy.
+# Runs the Next.js dev server from bind-mounted source (live reload) + a local Postgres.
+# A one-shot `setup` service installs deps, runs Prisma migrations and app-store seed before the web starts.
+
+volumes:
+  database-data:
+
+services:
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: unicorn_user
+      POSTGRES_PASSWORD: magical_password
+      POSTGRES_DB: calendso
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U unicorn_user -d calendso"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  setup:
+    image: node:20
+    working_dir: /calcom
+    volumes:
+      - ./:/calcom
+    env_file:
+      - ./.env.base44-defaults
+      - /run/base44/app.env
+    environment:
+      DATABASE_URL: postgresql://unicorn_user:magical_password@database:5432/calendso
+      DATABASE_DIRECT_URL: postgresql://unicorn_user:magical_password@database:5432/calendso
+      HUSKY: "0"
+      CALCOM_TELEMETRY_DISABLED: "1"
+      TZ: UTC
+    depends_on:
+      database:
+        condition: service_healthy
+    command: >-
+      sh -c "corepack enable &&
+      yarn install &&
+      yarn prisma generate &&
+      yarn workspace @calcom/prisma db-deploy &&
+      yarn workspace @calcom/web run copy-app-store-static"
+
+  web:
+    image: node:20
+    working_dir: /calcom
+    restart: unless-stopped
+    volumes:
+      - ./:/calcom
+    env_file:
+      - ./.env.base44-defaults
+      - /run/base44/app.env
+    environment:
+      DATABASE_URL: postgresql://unicorn_user:magical_password@database:5432/calendso
+      DATABASE_DIRECT_URL: postgresql://unicorn_user:magical_password@database:5432/calendso
+      NEXT_PUBLIC_WEBAPP_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:3000/api/auth
+      HUSKY: "0"
+      CALCOM_TELEMETRY_DISABLED: "1"
+      TZ: UTC
+      NODE_OPTIONS: --max-old-space-size=8192
+      BASE44_PUBLIC_HOST_SUFFIX: ${BASE44_PUBLIC_HOST_SUFFIX}
+    ports:
+      - "3000:3000"
+    depends_on:
+      database:
+        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
+    command: sh -c "corepack enable && yarn dev"
